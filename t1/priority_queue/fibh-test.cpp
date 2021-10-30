@@ -1,5 +1,5 @@
 #if 0
-g++ -Wall -Werror -Wshadow -O2 fibh-test.cpp rand.c -o /tmp/fibh-test$$ || exit 1
+g++ -Wall -Werror -Wshadow -fsanitize=address -O2 -g fibh-test.cpp rand.c -o /tmp/fibh-test$$ || exit 1
 /tmp/fibh-test$$
 ret=$?
 rm /tmp/fibh-test$$
@@ -144,13 +144,13 @@ int myprint(const char *fmt, ...)
 
 int main(void)
 {
-#define MAXVAL 100
+#define MAXVAL 1000
 	int testtime = TESTTIME;
 	fibh<int> fb;
 	std::priority_queue<int> pq;
 
 	while (testtime--) {
-		switch (randin(0, 5) % 2 ? 3 : 4) {
+		switch (randin(0, 5)) {
 			case 0: 
 				if (fb.empty()) {
 					printf("pop, /*: epmty */\n");

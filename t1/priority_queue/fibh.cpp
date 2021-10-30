@@ -99,6 +99,12 @@ class fibh {
 			cnt = 0;
 		}
 
+		~fibh()
+		{
+			while (!empty())
+				pop();
+		}
+
 		bool empty() const
 		{
 			return cnt == 0;
@@ -187,7 +193,7 @@ class fibh {
 
 			}
 
-			delete deg_table;
+			delete []deg_table;
 
 			max = res;
 			for (p = list_getlend(max); p != NULL; p = p->right) {

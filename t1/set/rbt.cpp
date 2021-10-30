@@ -41,24 +41,24 @@ class rbt {
 			delete cur;
 		}
 
-		void rotate_left(struct node **cur)
+		void rotate_left(struct node *&cur)
 		{
-			struct node *t = (*cur)->right;
-			(*cur)->right = t->left;
-			t->left = (*cur);
-			t->color = (*cur)->color;
-			(*cur)->color = red;
-			*cur = t;
+			struct node *t = cur->right;
+			cur->right = t->left;
+			t->left = cur;
+			t->color = cur->color;
+			cur->color = red;
+			cur = t;
 		}
 
-		void rotate_right(struct node **cur)
+		void rotate_right(struct node *&cur)
 		{
-			struct node *t = (*cur)->left;
-			(*cur)->left = t->right;
-			t->right = (*cur);
-			t->color = (*cur)->color;
-			(*cur)->color = red;
-			*cur = t;
+			struct node *t = cur->left;
+			cur->left = t->right;
+			t->right = cur;
+			t->color = cur->color;
+			cur->color = red;
+			cur = t;
 		}
 
 		enum color_t color_xor(enum color_t color)
@@ -66,48 +66,48 @@ class rbt {
 			return color == red ? black : red;
 		}
 
-		void flip_color(struct node **cur)
+		void flip_color(struct node *&cur)
 		{
-			(*cur)->color = color_xor((*cur)->color);
-			(*cur)->left->color = color_xor((*cur)->left->color);
-			(*cur)->right->color = color_xor((*cur)->right->color);
+			cur->color = color_xor(cur->color);
+			cur->left->color = color_xor(cur->left->color);
+			cur->right->color = color_xor(cur->right->color);
 		}
 
-		void insert_fix(struct node **cur)
+		void insert_fix(struct node *&cur)
 		{
-			if (is_red_node((*cur)->right)
-					&& !is_red_node((*cur)->left))
+			if (is_red_node(cur->right)
+					&& !is_red_node(cur->left))
 				rotate_left(cur);
-			if (is_red_node((*cur)->left)
-					&& is_red_node((*cur)->left->left))
+			if (is_red_node(cur->left)
+					&& is_red_node(cur->left->left))
 				rotate_right(cur);
-			if (is_red_node((*cur)->left)
-					&& is_red_node((*cur)->right))
+			if (is_red_node(cur->left)
+					&& is_red_node(cur->right))
 				flip_color(cur);
 		}
 
-		void insert_r(struct node **cur, const T &value)
+		void insert_r(struct node *&cur, const T &value)
 		{
-			if ((*cur) == NULL) {
-				*cur = new node(value);
+			if (cur == NULL) {
+				cur = new node(value);
 				return;
 			}
 
-			if (value < (*cur)->data)
-				insert_r(&((*cur)->left), value);
+			if (value < cur->data)
+				insert_r(cur->left, value);
 			else
-				insert_r(&((*cur)->right), value);
+				insert_r(cur->right, value);
 
 			insert_fix(cur);
 		}
 
-		void drop_right_r(struct node **cur, struct node *t)
+		void drop_right_r(struct node *&cur, struct node *t)
 		{
-			if (*cur == NULL) {
-				*cur = t;
+			if (cur == NULL) {
+				cur = t;
 				return;
 			}
-			drop_right_r(&((*cur)->right), t);
+			drop_right_r(cur->right, t);
 		}
 
 		T &find_min(struct node *cur)
@@ -117,94 +117,94 @@ class rbt {
 			return cur->data;
 		}
 
-		void erase_fix(struct node **cur)
+		void erase_fix(struct node *&cur)
 		{
-			if (is_red_node((*cur)->right)
-					&& !is_red_node((*cur)->left))
+			if (is_red_node(cur->right)
+					&& !is_red_node(cur->left))
 				rotate_left(cur);
-			if (is_red_node((*cur)->left)
-					&& is_red_node((*cur)->left->left))
+			if (is_red_node(cur->left)
+					&& is_red_node(cur->left->left))
 				rotate_right(cur);
-			if (is_red_node((*cur)->left)
-					&& is_red_node((*cur)->right))
+			if (is_red_node(cur->left)
+					&& is_red_node(cur->right))
 				flip_color(cur);
 		}
 
-		void erase_min(struct node **cur)
+		void erase_min(struct node *&cur)
 		{
-			if ((*cur)->left == NULL) {
-				struct node *d = *cur;
-				*cur = (*cur)->right;
+			if (cur->left == NULL) {
+				struct node *d = cur;
+				cur = cur->right;
 				delete d;
 				return;
 			}
 
-			if (!is_red_node((*cur)->left) &&
-					!is_red_node((*cur)->left->left)) {
-				(*cur)->color = color_xor((*cur)->color);
-				if ((*cur)->right != NULL
-					       	&& is_red_node((*cur)->right->left)) {
-					rotate_right(&(*cur)->right);
+			if (!is_red_node(cur->left) &&
+					!is_red_node(cur->left->left)) {
+				cur->color = color_xor(cur->color);
+				if (cur->right != NULL
+					       	&& is_red_node(cur->right->left)) {
+					rotate_right(cur->right);
 					rotate_left(cur);
-					(*cur)->color = color_xor((*cur)->color);
+					cur->color = color_xor(cur->color);
 				}
 			}
 
-			erase_min(&((*cur)->left));
+			erase_min(cur->left);
 			erase_fix(cur);
 		}
 
-		int erase_r(struct node **cur, const T &value)
+		int erase_r(struct node *&cur, const T &value)
 		{
-			if ((*cur) == NULL)
+			if (cur == NULL)
 				return 0;
 
-			if (value < (*cur)->data) {
-				assert((*cur)->left != NULL);
-				if (!is_red_node((*cur)->left)
-						&& !(is_red_node((*cur)->left->left))) {
-					(*cur)->color = color_xor((*cur)->color);
-					if ((*cur)->right != NULL
-							&& is_red_node((*cur)->right->left)) {
-						rotate_right(&(*cur)->right);
+			if (value < cur->data) {
+				assert(cur->left != NULL);
+				if (!is_red_node(cur->left)
+						&& !(is_red_node(cur->left->left))) {
+					cur->color = color_xor(cur->color);
+					if (cur->right != NULL
+							&& is_red_node(cur->right->left)) {
+						rotate_right(cur->right);
 						rotate_left(cur);
-						(*cur)->color = color_xor((*cur)->color);
+						cur->color = color_xor(cur->color);
 					}
 				}
-				erase_r(&((*cur)->left), value);
+				erase_r(cur->left, value);
 			} else {
-				if (is_red_node((*cur)->left))
+				if (is_red_node(cur->left))
 					rotate_right(cur);
 
-				if ((*cur)->data == value
-						&& (*cur)->right == NULL) {
-					if ((*cur)->left != NULL) {
+				if (cur->data == value
+						&& cur->right == NULL) {
+					if (cur->left != NULL) {
 						rotate_right(cur);
-						erase_r(&((*cur)->right), value);
+						erase_r(cur->right, value);
 						return 1;
 					} else {
-						delete *cur;
-						*cur = NULL;
+						delete cur;
+						cur = NULL;
 						return 0;
 					}
 				}
-				assert((*cur)->right != NULL);
-				if (!is_red_node((*cur)->right) &&
-						!is_red_node((*cur)->right->left)) {
-					(*cur)->color = color_xor((*cur)->color);
-					//assert((*cur)->left != NULL);
-					if ((*cur)->left != NULL
-							&& is_red_node((*cur)->left->left)) {
+				assert(cur->right != NULL);
+				if (!is_red_node(cur->right) &&
+						!is_red_node(cur->right->left)) {
+					cur->color = color_xor(cur->color);
+					//assert(cur->left != NULL);
+					if (cur->left != NULL
+							&& is_red_node(cur->left->left)) {
 						rotate_right(cur);
-						(*cur)->color = color_xor((*cur)->color);
+						cur->color = color_xor(cur->color);
 					}
 				}
 
-				if ((*cur)->data == value) {
-					(*cur)->data = find_min((*cur)->right);
-					erase_min(&((*cur)->right));
+				if (cur->data == value) {
+					cur->data = find_min(cur->right);
+					erase_min(cur->right);
 				} else {
-					erase_r(&((*cur)->right), value);
+					erase_r(cur->right, value);
 				}
 			}
 
@@ -284,7 +284,7 @@ class rbt {
 		{
 			if (count(value) != 0)
 				return;
-			insert_r(&root, value);
+			insert_r(root, value);
 			root->color = black;
 			++cnt;
 		}
@@ -296,7 +296,7 @@ class rbt {
 			if (!is_red_node(root->left)
 					&& !(is_red_node(root->right)))
 				root->color = red;
-			erase_r(&root, value);
+			erase_r(root, value);
 			if (root != NULL)
 				root->color = black;
 			--cnt;

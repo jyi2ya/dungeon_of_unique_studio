@@ -1,5 +1,5 @@
 #if 0
-g++ -Wall -Werror -Wshadow -O2 rbt-test.cpp rand.c -o /tmp/rbt-test$$ || exit 1
+g++ -Wall -Werror -Wshadow -fsanitize=address -O2 -g rbt-test.cpp rand.c -o /tmp/rbt-test$$ || exit 1
 /tmp/rbt-test$$
 ret=$?
 rm /tmp/rbt-test$$
