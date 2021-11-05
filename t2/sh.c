@@ -28,10 +28,13 @@ int isblank(int x)
 
 int is_independent_shell = 0;
 int exit_flag = 0;
+int signal_received = 0;
 
 const char *HOME;
 
 #define X_LESS_BUILTIN_COMMANDS \
+	X(command) \
+	X(builtin) \
 	X(set) \
 	X(cd) \
 	X(exit)
@@ -58,7 +61,9 @@ X(mv) \
 X(rm) \
 /* interesting things */ \
 X(set) \
-X(sh)
+X(sh) \
+X(command) \
+X(builtin)
 /* END_OF_X_MORE_BUILTIN_COMMANDS */
 
 #define X_NOFORK_COMMANDS \
@@ -520,6 +525,8 @@ int execute_commands(struct cmd_line *cmds)
 						}
 						dup2(fd, STDOUT_FILENO);
 					}
+					signal(SIGINT, SIG_DFL);
+					signal(SIGQUIT, SIG_DFL);
 					exit(execute_single_command(last));
 				} else {
 					if (!cur->is_background) {
@@ -557,6 +564,11 @@ char *sh_readline(char *prompt)
 	return readline(prompt);
 }
 
+void signal_handler(int sig)
+{
+	signal_received = 1;
+}
+
 int sh_main(int argc, char *argv[])
 {
 	int line_cnt = 0;
@@ -566,14 +578,24 @@ int sh_main(int argc, char *argv[])
 
 	if ((HOME = getenv("HOME")) == NULL)
 		HOME = getpwuid(getuid())->pw_dir;
+
+	signal(SIGINT, signal_handler);
+	signal(SIGQUIT, signal_handler);
+
 	while (!exit_flag) {
+		int errcode = 0;
 		char PS1[1024];
 		char *line;
 		struct cmd_line *cmds;
 
+		if (signal_received) {
+			signal_received = 0;
+			return_value = 130;
+			putchar('\n');
+			/* beautify */
+		}
 		sprintf(PS1, "%-4d[%-3d] sh $ ", line_cnt, return_value);
 		line = sh_readline(PS1);
-		add_history(line);
 
 		/* process ctrl-d */
 		if (line == NULL) {
@@ -581,8 +603,13 @@ int sh_main(int argc, char *argv[])
 			break;
 		}
 
+		add_history(line);
+
 		cmds = NULL;
-		if (parse_cmd(line, &cmds) == 0) {
+		errcode = parse_cmd(line, &cmds);
+		free(line);
+
+		if (errcode == 0) {
 #ifdef DEBUG
 			struct cmd_line *p;
 			for (p = cmds; p != NULL; p = p->next) {
@@ -627,7 +654,6 @@ int sh_main(int argc, char *argv[])
 			cmds = next;
 		}
 
-		free(line);
 		++line_cnt;
 	}
 
@@ -787,6 +813,52 @@ int kill_main(int argc, char *argv[])
 
 int pwd_main(int argc, char *argv[])
 {
-	puts("pwd: not implemented yet");
+	int max = pathconf(".", _PC_PATH_MAX);
+	char *p;
+	char *buf;
+	if (max == -1)
+		max = 4096;
+	buf = alloc_or_die(NULL, max);
+	p = getcwd(buf, max);
+	if (p == NULL) {
+		perror("pwd: ");
+		return 1;
+	} else {
+		printf("%s\n", buf);
+	}
+	free(buf);
+	return 0;
+}
+
+int command_main(int argc, char *argv[])
+{
+	if (argv[1] == NULL) {
+		puts("Syntax error");
+		return 1;
+	}
+
+	execvp(argv[1], argv + 1);
+	printf("%s not found\n", argv[1]);
 	return 1;
+}
+
+int builtin_main(int argc, char *argv[])
+{
+	int old_is_independent_shell = is_independent_shell;
+	int ret;
+	if (argv[1] == NULL) {
+		puts("Syntax error");
+		return 1;
+	}
+
+	is_independent_shell = 1;
+	ret = find_command_and_call(argc - 1, argv + 1);
+	is_independent_shell = old_is_independent_shell;
+
+	if ((ret & 0xff) != 0) {
+		printf("%s not found\n", argv[1]);
+		return 1;
+	}
+
+	return ret >> 8;
 }
