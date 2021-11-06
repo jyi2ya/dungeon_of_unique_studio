@@ -25,6 +25,8 @@ int isblank(int x)
 #include <signal.h>
 #include <fcntl.h>
 #include <pwd.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 int is_independent_shell = 0;
 int exit_flag = 0;
@@ -63,7 +65,8 @@ X(rm) \
 X(set) \
 X(sh) \
 X(command) \
-X(builtin)
+X(builtin) \
+X(type)
 /* END_OF_X_MORE_BUILTIN_COMMANDS */
 
 #define X_NOFORK_COMMANDS \
@@ -122,6 +125,11 @@ char *strndup_or_die(char *head, int size)
 	return buf;
 }
 
+int get_terminal_size(int *width, int *height)
+{
+	return 0;
+}
+
 int scan_token(char *line, char ***res)
 {
 	char *token_start = line;
@@ -149,6 +157,7 @@ int scan_token(char *line, char ***res)
 						state = read_blank;
 						break;
 					case '\0':
+					case '#':
 						goto scan_over;
 						break;
 					case '\\':
@@ -197,6 +206,7 @@ int scan_token(char *line, char ***res)
 						state = read_blank;
 						break;
 					case '\0':
+					case '#':
 						(*res)[token_cnt] = strndup_or_die(token_start, pos - token_start);
 						++token_cnt;
 						goto scan_over;
@@ -512,7 +522,7 @@ int execute_commands(struct cmd_line *cmds)
 					if (last->input != NULL) {
 						int fd = open(last->input, O_RDONLY);
 						if (fd == -1) {
-							perror("sh: ");
+							perror("sh");
 							exit(1);
 						}
 						dup2(fd, STDIN_FILENO);
@@ -520,7 +530,7 @@ int execute_commands(struct cmd_line *cmds)
 					if (last->output != NULL) {
 						int fd = open(last->output, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 						if (fd == -1) {
-							perror("sh: ");
+							perror("sh");
 							exit(1);
 						}
 						dup2(fd, STDOUT_FILENO);
@@ -594,11 +604,13 @@ int sh_main(int argc, char *argv[])
 			putchar('\n');
 			/* beautify */
 		}
+
 		sprintf(PS1, "%-4d[%-3d] sh $ ", line_cnt, return_value);
 		line = sh_readline(PS1);
 
 		/* process ctrl-d */
 		if (line == NULL) {
+			/* beautify */
 			puts("exit");
 			break;
 		}
@@ -669,7 +681,56 @@ int echo_main(int argc, char *argv[])
 
 int ls_main(int argc, char *argv[])
 {
-	puts("ls: not implemented yet");
+	int n;
+	int i, j;
+	struct dirent **sorted;
+	int rows;
+	int width = 80;
+	int *column_width;
+
+	n = scandir(".", &sorted, NULL, alphasort);
+
+	if (n < 0) {
+		perror("ls");
+		return 1;
+	}
+
+	column_width = alloc_or_die(NULL, width * sizeof(int));
+
+	for (rows = n / width + 1; rows < n; ++rows) {
+		int total = 0;
+
+		for (i = 0; i < n; i += rows) {
+			int maxlen = 0;
+			for (j = i; j < n && j < i + rows; ++j) {
+				int len = strlen(sorted[j]->d_name) + 1;
+				if (len > maxlen)
+					maxlen = len;
+			}
+			total += maxlen;
+			column_width[i / rows] = maxlen;
+		}
+
+		if (total <= width)
+			break;
+	}
+
+	if (rows == n) {
+		for (i = 0; i < n; ++i)
+			printf("%s\n", sorted[i]->d_name);
+	} else {
+		for (i = 0; i < rows; ++i) {
+			for (j = i; j < n; j += rows)
+				printf("%-*s", column_width[j / rows], sorted[j]->d_name);
+			putchar('\n');
+		}
+	}
+
+	for (i = 0; i < n; ++i)
+		free(sorted[i]);
+	free(sorted);
+	free(column_width);
+
 	return 0;
 }
 
@@ -743,13 +804,59 @@ int xargs_main(int argc, char *argv[])
 
 int touch_main(int argc, char *argv[])
 {
-	puts("touch: not implemented yet");
+	struct timespec times[2];
+	struct stat statbuf;
+	if (argv[1] == NULL) {
+		puts("Too few arguments");
+		return 1;
+	}
+
+	errno = 0;
+	stat(argv[1], &statbuf);
+	times[0].tv_sec = statbuf.st_atime;
+	times[1].tv_sec = statbuf.st_mtime;
+	times[0].tv_nsec = statbuf.st_atim.tv_nsec;
+	times[1].tv_nsec = statbuf.st_mtim.tv_nsec;
+	utimensat(AT_FDCWD, argv[1], times, 0);
+	if (errno) {
+		if (errno == ENOENT) {
+			int fd;
+
+			errno = 0;
+			fd = creat(argv[1], S_IRUSR | S_IWUSR |
+					S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+
+			if (fd == -1) {
+				perror("touch");
+				return 1;
+			}
+
+			if (futimens(fd, times) == -1) {
+				perror("touch");
+				return 1;
+			}
+
+		} else {
+			perror("touch");
+			return 1;
+		}
+	}
+
 	return 0;
 }
 
 int mkdir_main(int argc, char *argv[])
 {
-	puts("mkdir: not implemented yet");
+	if (argv[1] == NULL) {
+		puts("Too few arguments");
+		return 1;
+	}
+	errno = 0;
+	mkdir(argv[1], 0755);
+	if (errno) {
+		perror("mkdir");
+		return 1;
+	}
 	return 0;
 }
 
@@ -767,7 +874,16 @@ int mv_main(int argc, char *argv[])
 
 int rm_main(int argc, char *argv[])
 {
-	puts("rm: not implemented yet");
+	if (argv[1] == NULL) {
+		puts("Too few arguments");
+		return 1;
+	}
+	errno = 0;
+	unlink(argv[1]);
+	if (errno) {
+		perror("rm");
+		return 1;
+	}
 	return 0;
 }
 
@@ -821,7 +937,7 @@ int pwd_main(int argc, char *argv[])
 	buf = alloc_or_die(NULL, max);
 	p = getcwd(buf, max);
 	if (p == NULL) {
-		perror("pwd: ");
+		perror("pwd");
 		return 1;
 	} else {
 		printf("%s\n", buf);
@@ -861,4 +977,31 @@ int builtin_main(int argc, char *argv[])
 	}
 
 	return ret >> 8;
+}
+
+int check_is_builtin(char *cmd)
+{
+
+#define X(c) if (strcmp(cmd, #c) == 0) return 1;
+	if (is_independent_shell) {
+		X_MORE_BUILTIN_COMMANDS
+	} else {
+		X_LESS_BUILTIN_COMMANDS
+	}
+#undef X
+
+	return 0;
+}
+
+int type_main(int argc, char *argv[])
+{
+	if (argv[1] == NULL) {
+		puts("Too few arguments");
+		return 1;
+	}
+	if (check_is_builtin(argv[1]))
+		printf("%s is a builtin command\n", argv[1]);
+	else
+		printf("%s is an external command\n", argv[1]);
+	return 0;
 }
