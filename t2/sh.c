@@ -463,19 +463,25 @@ int is_nofork_command(char *cmd)
 	return 0;
 }
 
-int execute_single_command(struct cmd_line *cmd)
+int execute_single_command(char *cmd, char **paramters)
 {
 	int cnt = 0;
 	int ret;
 
-	while (cmd->paramters[cnt] != NULL)
+	while (paramters[cnt] != NULL)
 		++cnt;
-	ret = find_command_and_call(cnt, cmd->paramters);
+	ret = find_command_and_call(cnt, paramters);
 	if ((ret & 0xff) == 0)
 		return ret;
-	execvp(cmd->cmd, cmd->paramters);
+	execvp(cmd, paramters);
 
-	printf("%s not found\n", cmd->cmd);
+	is_independent_shell = 1;
+	ret = find_command_and_call(cnt, paramters);
+	is_independent_shell = 0;
+	if ((ret & 0xff) == 0)
+		return ret;
+
+	printf("%s not found\n", cmd);
 	return 127;
 }
 
@@ -497,7 +503,8 @@ int execute_commands(struct cmd_line *cmds)
 			int cur_pipe[2] = { -1, -1 };
 
 			if (last == cur && is_nofork_command(cur->cmd)) {
-				status = execute_single_command(cur) << 8;
+				status = execute_single_command(cur->cmd,
+						cur->paramters) << 8;
 				continue;
 			}
 
@@ -541,7 +548,8 @@ int execute_commands(struct cmd_line *cmds)
 					}
 					signal(SIGINT, SIG_DFL);
 					signal(SIGQUIT, SIG_DFL);
-					exit(execute_single_command(last));
+					exit(execute_single_command(last->cmd,
+								last->paramters));
 				} else {
 					if (!cur->is_background) {
 						*p = alloc_or_die(NULL, sizeof(struct pid_list));
@@ -800,9 +808,77 @@ int less_main(int argc, char *argv[])
 	return 0;
 }
 
+char *xargs_read_token(const char *sp)
+{
+	int ch;
+	int size = 8;
+	int cnt = 0;
+	char *buf = alloc_or_die(NULL, size);
+
+	do
+		ch = getchar();
+	while (strchr(sp, ch) != NULL);
+	if (ch != EOF) {
+		ungetc(ch, stdin);
+		while ((ch = getchar()) != EOF && strchr(sp, ch) == NULL) {
+			buf[cnt++] = ch;
+			if (cnt == size) {
+				size *= 2;
+				buf = alloc_or_die(buf, size);
+			}
+		}
+	}
+
+	if (cnt == 0) {
+		free(buf);
+		return NULL;
+	}
+
+	buf[cnt] = '\0';
+	return buf;
+}
+
 int xargs_main(int argc, char *argv[])
 {
-	puts("xargs: not implemented yet");
+	char **paramters;
+	char *token;
+	int i;
+	int status;
+
+	if (argc < 2)
+		++argc;
+	paramters = alloc_or_die(NULL, sizeof(char *) * (argc + 1));
+
+	for (i = 1; i < argc; ++i)
+		paramters[i - 1] = argv[i];
+	if (paramters[0] == NULL) {
+		paramters[0] = "echo";
+		paramters[1] = NULL;
+	}
+
+	while ((token = xargs_read_token(" \t\n")) != NULL) {
+		int pid;
+
+		paramters[argc - 1] = token;
+		paramters[argc] = NULL;
+
+		pid = fork();
+		if (pid == -1) {
+			free(token);
+			perror("xargs");
+			continue;
+		} else if (pid == 0) {
+			execvp(paramters[0], paramters);
+			printf("%s not found\n", paramters[0]);
+		} else {
+			waitpid(pid, &status, 0);
+		}
+
+		free(token);
+	}
+
+	free(paramters);
+
 	return 0;
 }
 
