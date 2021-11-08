@@ -37,9 +37,11 @@ const char *HOME;
 #define X_LESS_BUILTIN_COMMANDS \
 	X(command) \
 	X(builtin) \
+	X(type) \
 	X(set) \
 	X(cd) \
-	X(exit)
+	X(exit) \
+	X(setenv)
 
 #define X_MORE_BUILTIN_COMMANDS \
 /* basic builtin  */ \
@@ -66,13 +68,15 @@ X(set) \
 X(sh) \
 X(command) \
 X(builtin) \
-X(type)
+X(type) \
+X(setenv)
 /* END_OF_X_MORE_BUILTIN_COMMANDS */
 
 #define X_NOFORK_COMMANDS \
 	X(set) \
 	X(cd) \
-	X(exit)
+	X(exit) \
+	X(setenv)
 
 #define X(x) int x ## _main(int argc, char *argv[]);
 X_MORE_BUILTIN_COMMANDS
@@ -605,7 +609,7 @@ int sh_main(int argc, char *argv[])
 			/* beautify */
 		}
 
-		sprintf(PS1, "%-4d[%-3d] sh $ ", line_cnt, return_value);
+		sprintf(PS1, "%-4d[%-3d] uselesh $ ", line_cnt, return_value);
 		line = sh_readline(PS1);
 
 		/* process ctrl-d */
@@ -862,18 +866,27 @@ int mkdir_main(int argc, char *argv[])
 
 int cp_main(int argc, char *argv[])
 {
+	if (argc < 3) {
+		puts("Too few arguments");
+		return 1;
+	}
 	puts("cp: not implemented yet");
 	return 0;
 }
 
 int mv_main(int argc, char *argv[])
 {
+	if (argc < 3) {
+		puts("Too few arguments");
+		return 1;
+	}
 	puts("mv: not implemented yet");
 	return 0;
 }
 
 int rm_main(int argc, char *argv[])
 {
+	/* TODO */
 	if (argv[1] == NULL) {
 		puts("Too few arguments");
 		return 1;
@@ -906,6 +919,19 @@ int exit_main(int argc, char *argv[])
 {
 	exit_flag = 1;
 	return 0;
+}
+
+int setenv_main(int argc, char *argv[])
+{
+	char *p;
+	if (argv[1] == NULL)
+		return 1;
+	for (p = argv[1]; *p != '=' && *p != '\0'; ++p)
+		;
+	if (*p == '\0')
+		return 1;
+	*p = '\0';
+	return setenv(argv[1], p + 1, 1);
 }
 
 int set_main(int argc, char *argv[])
