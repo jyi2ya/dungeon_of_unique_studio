@@ -1094,8 +1094,24 @@ int set_main(int argc, char *argv[])
 
 int kill_main(int argc, char *argv[])
 {
-	puts("kill: not implemented yet");
-	return 1;
+	int i;
+	int status = 0;
+
+	if (argc < 2) {
+		puts("Too few arguments");
+		return 1;
+	}
+
+	for (i = 1; i < argc; ++i) {
+		errno = 0;
+		kill(atoi(argv[i]), SIGTERM);
+		if (errno) {
+			perror("kill");
+			status = 1;
+		}
+	}
+
+	return status;
 }
 
 int pwd_main(int argc, char *argv[])
