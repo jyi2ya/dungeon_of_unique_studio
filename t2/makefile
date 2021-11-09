@@ -1,7 +1,7 @@
 CC=gcc
 CFLAGS=-lreadline -Wall -Werror -Wshadow -fsanitize=address -O0 -g
 
-all:echo exit cd pwd kill ls cat xargs touch mkdir less cp ln mv rm set sh command builtin type 
+all:echo exit cd pwd kill ls cat xargs touch mkdir less cp ln mv rm set sh command builtin type setenv 
 
 echo: sh.c
 	$(CC) $(CFLAGS) sh.c -o echo
@@ -43,5 +43,7 @@ builtin: sh.c
 	$(CC) $(CFLAGS) sh.c -o builtin
 type: sh.c
 	$(CC) $(CFLAGS) sh.c -o type
+setenv: sh.c
+	$(CC) $(CFLAGS) sh.c -o setenv
 clean:
-	rm -f echo exit cd pwd kill ls cat xargs touch mkdir less cp ln mv rm set sh command builtin type 
+	rm -f echo exit cd pwd kill ls cat xargs touch mkdir less cp ln mv rm set sh command builtin type setenv 
