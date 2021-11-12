@@ -41,7 +41,7 @@ const char *HOME;
 	X(set) \
 	X(cd) \
 	X(exit) \
-	X(setenv)
+	X(export)
 
 #define X_MORE_BUILTIN_COMMANDS \
 /* basic builtin  */ \
@@ -69,14 +69,14 @@ X(sh) \
 X(command) \
 X(builtin) \
 X(type) \
-X(setenv)
+X(export)
 /* END_OF_X_MORE_BUILTIN_COMMANDS */
 
 #define X_NOFORK_COMMANDS \
 	X(set) \
 	X(cd) \
 	X(exit) \
-	X(setenv)
+	X(export)
 
 #define X(x) int x ## _main(int argc, char *argv[]);
 X_MORE_BUILTIN_COMMANDS
@@ -1099,7 +1099,7 @@ int exit_main(int argc, char *argv[])
 	return 0;
 }
 
-int setenv_main(int argc, char *argv[])
+int export_main(int argc, char *argv[])
 {
 	char *p;
 	if (argv[1] == NULL)
