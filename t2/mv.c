@@ -15,7 +15,7 @@ int main(int argc, char *argv[])
 	errno = 0;
 	rename(argv[1], argv[2]);
 
-	if (errno == EISDIR) {
+	if (errno == EISDIR || errno == EEXIST || errno == ENOTEMPTY) {
 		char *buf = alloc_or_die(NULL, strlen(argv[1]) + strlen(argv[2]) + 2);
 		char *infile;
 		errno = 0;
