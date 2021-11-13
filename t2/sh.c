@@ -421,7 +421,7 @@ int execute_single_command(char *cmd, char **paramters)
 int execute_commands(struct cmd_line *cmds)
 {
 	struct cmd_line *cur, *last;
-	int status;
+	int status = 0;
 
 	for (cur = cmds, last = cmds; cur != NULL; cur = cur->next) {
 		if (!cur->is_pipe) {
@@ -500,13 +500,19 @@ int execute_commands(struct cmd_line *cmds)
 			}
 
 			while (pid_to_wait != NULL) {
-				struct pid_list *next = pid_to_wait->next;
+				int pid;
 
-				while (waitpid(pid_to_wait->pid, &status, 0) == -1)
+				while ((pid = wait(&status)) == -1)
 					if (errno != EINTR)
 						break;
-				free(pid_to_wait);
-				pid_to_wait = next;
+
+				for (p = &pid_to_wait; *p != NULL; p = &((*p)->next))
+					if ((*p)->pid == pid) {
+						struct pid_list *d = *p;
+						*p = d->next;
+						free(d);
+						break;
+					}
 			}
 		}
 	}
