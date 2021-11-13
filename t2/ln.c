@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
 	errno = 0;
 	link(argv[1], argv[2]);
 
-	if (errno == EISDIR) {
+	if (errno == EEXIST) {
 		char *buf = alloc_or_die(NULL, strlen(argv[1]) + strlen(argv[2]) + 2);
 		char *infile;
 		errno = 0;
@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
 		free(buf);
 	}
 
-	if (errno) {
+	if (errno == ENOENT) {
 		perror("ln");
 		return 1;
 	}
