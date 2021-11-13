@@ -28,10 +28,11 @@ int main(int argc, char *argv[])
 		for (i = 0; i < n; i += rows) {
 			int maxlen = 0;
 			for (j = i; j < n && j < i + rows; ++j) {
-				int len = strlen(sorted[j]->d_name) + 1;
+				int len = strlen(sorted[j]->d_name);
 				if (len > maxlen)
 					maxlen = len;
 			}
+			maxlen += 2;
 			total += maxlen;
 			column_width[i / rows] = maxlen;
 		}
@@ -46,7 +47,10 @@ int main(int argc, char *argv[])
 	} else {
 		for (i = 0; i < rows; ++i) {
 			for (j = i; j < n; j += rows)
-				printf("%-*s", column_width[j / rows], sorted[j]->d_name);
+				if (j + rows >= n)
+					printf("%s", sorted[j]->d_name);
+				else
+					printf("%-*s", column_width[j / rows], sorted[j]->d_name);
 			putchar('\n');
 		}
 	}
