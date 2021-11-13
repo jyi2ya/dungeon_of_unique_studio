@@ -3,7 +3,7 @@
 get_cmd_list()
 {
 	sed -n '/define X_MORE_BUILTIN_COMMANDS/,/END_OF_X_MORE_BUILTIN_COMMANDS/p' \
-		< sh.c | awk 'NR > 1' | sed 's#/\*.*\*/##g;s#\\##g' \
+		< huge_sh.c | awk 'NR > 1' | sed 's#/\*.*\*/##g;s#\\##g' \
 		| tr -d ' \n' | sed 's/X(\([^)]*\))/\1 /g'
 }
 
@@ -17,8 +17,8 @@ EOF
 
 get_cmd_list | tr ' ' '\n' | while read -r cmd; do
 		cat >> makefile <<EOF
-$cmd: sh.c
-	\$(CC) \$(CFLAGS) sh.c -o $cmd
+$cmd: $cmd.c
+	\$(CC) \$(CFLAGS) $cmd.c -o $cmd
 EOF
 done
 

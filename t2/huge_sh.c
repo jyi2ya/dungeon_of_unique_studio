@@ -1,3 +1,12 @@
+#if 0
+name="sh"
+gcc -lreadline -Wall -Werror -Wshadow -fsanitize=address -O0 -g "$name".c -o /tmp/"$name"-$$ || exit 1
+/tmp/"$name"-$$ "$@"
+ret=$?
+rm /tmp/"$name"-$$
+exit $ret
+#endif
+
 #ifndef __USE_ISOC99
 int isblank(int x)
 {
@@ -13,10 +22,11 @@ int isblank(int x)
 #include <readline/history.h>
 #include <unistd.h>
 #include <sys/wait.h>
-#include <fcntl.h>
 #include <signal.h>
+#include <fcntl.h>
 #include <pwd.h>
-#include "util.h"
+#include <dirent.h>
+#include <sys/stat.h>
 
 int is_independent_shell = 0;
 int exit_flag = 0;
@@ -33,7 +43,34 @@ const char *HOME;
 	X(exit) \
 	X(export)
 
-#define X_MORE_BUILTIN_COMMANDS X_LESS_BUILTIN_COMMANDS
+#define X_MORE_BUILTIN_COMMANDS \
+/* basic builtin  */ \
+X(echo) \
+X(exit) \
+X(cd) \
+X(pwd) \
+/* advanced builtin */ \
+X(kill) \
+/* basic external */ \
+X(ls) \
+X(cat) \
+X(xargs) \
+X(touch) \
+X(mkdir) \
+/* advanced external */ \
+X(less) \
+X(cp) \
+X(ln) \
+X(mv) \
+X(rm) \
+/* interesting things */ \
+X(set) \
+X(sh) \
+X(command) \
+X(builtin) \
+X(type) \
+X(export)
+/* END_OF_X_MORE_BUILTIN_COMMANDS */
 
 #define X_NOFORK_COMMANDS \
 	X(set) \
@@ -71,6 +108,30 @@ int main(int argc, char *argv[])
 {
 	is_independent_shell = 1;
 	return find_command_and_call(argc, argv) >> 8;
+}
+
+void *alloc_or_die(void *p, size_t size)
+{
+	p = realloc(p, size);
+	if (p == NULL) {
+		fprintf(stderr, "%s\n", strerror(errno));
+		exit(1);
+	}
+	return p;
+}
+
+char *strndup_or_die(char *head, int size)
+{
+	char *buf = NULL;
+	buf = alloc_or_die(buf, size + 1);
+	strncpy(buf, head, size);
+	buf[size] = '\0';
+	return buf;
+}
+
+int get_terminal_size(int *width, int *height)
+{
+	return 0;
 }
 
 int scan_token(char *line, char ***res)
@@ -623,6 +684,406 @@ int sh_main(int argc, char *argv[])
 	return 0;
 }
 
+int echo_main(int argc, char *argv[])
+{
+	while (*++argv != NULL)
+		printf("%s%c", *argv, argv[1] == NULL ? '\n' : ' ');
+	return 0;
+}
+
+int ls_main(int argc, char *argv[])
+{
+	int n;
+	int i, j;
+	struct dirent **sorted;
+	int rows;
+	int width = 80;
+	int *column_width;
+
+	n = scandir(".", &sorted, NULL, alphasort);
+
+	if (n < 0) {
+		perror("ls");
+		return 1;
+	}
+
+	column_width = alloc_or_die(NULL, width * sizeof(int));
+
+	for (rows = n / width + 1; rows < n; ++rows) {
+		int total = 0;
+
+		for (i = 0; i < n; i += rows) {
+			int maxlen = 0;
+			for (j = i; j < n && j < i + rows; ++j) {
+				int len = strlen(sorted[j]->d_name) + 1;
+				if (len > maxlen)
+					maxlen = len;
+			}
+			total += maxlen;
+			column_width[i / rows] = maxlen;
+		}
+
+		if (total <= width)
+			break;
+	}
+
+	if (rows == n) {
+		for (i = 0; i < n; ++i)
+			printf("%s\n", sorted[i]->d_name);
+	} else {
+		for (i = 0; i < rows; ++i) {
+			for (j = i; j < n; j += rows)
+				printf("%-*s", column_width[j / rows], sorted[j]->d_name);
+			putchar('\n');
+		}
+	}
+
+	for (i = 0; i < n; ++i)
+		free(sorted[i]);
+	free(sorted);
+	free(column_width);
+
+	return 0;
+}
+
+int cat_copy_stream_to_stdout(FILE *stream)
+{
+	int ch;
+
+	errno = 0;
+
+	while ((ch = fgetc(stream)) != EOF)
+		if (putchar(ch) == EOF)
+			break;
+
+	if (errno) {
+		perror("cat");
+		return 1;
+	}
+
+	return 0;
+}
+
+int cat_main(int argc, char *argv[])
+{
+	int file_specified = 0;
+	int error_occured = 0;
+
+	while (*++argv != NULL) {
+		if (strcmp(*argv, "-u") == 0) {
+			setvbuf(stdout, NULL, _IONBF, 0);
+			continue;
+		} else if (strcmp(*argv, "-") == 0) {
+			file_specified = 1;
+
+			if (cat_copy_stream_to_stdout(stdin))
+				error_occured = 1;
+		} else {
+			FILE *in = fopen(*argv, "r");
+			file_specified = 1;
+
+			if (in != NULL) {
+				if (cat_copy_stream_to_stdout(in))
+					error_occured = 1;
+				fclose(in);
+			} else {
+				error_occured = 1;
+				perror("cat");
+			}
+		}
+	}
+
+	if (!file_specified)
+		if (cat_copy_stream_to_stdout(stdin))
+			error_occured = 1;
+
+	if (error_occured)
+		return 1;
+	return 0;
+}
+
+int less_main(int argc, char *argv[])
+{
+	puts("less: not implemented yet");
+	return 0;
+}
+
+char *xargs_read_token(const char *sp)
+{
+	int ch;
+	int size = 8;
+	int cnt = 0;
+	char *buf = alloc_or_die(NULL, size);
+
+	do
+		ch = getchar();
+	while (strchr(sp, ch) != NULL);
+	if (ch != EOF) {
+		ungetc(ch, stdin);
+		while ((ch = getchar()) != EOF && strchr(sp, ch) == NULL) {
+			buf[cnt++] = ch;
+			if (cnt == size) {
+				size *= 2;
+				buf = alloc_or_die(buf, size);
+			}
+		}
+	}
+
+	if (cnt == 0) {
+		free(buf);
+		return NULL;
+	}
+
+	buf[cnt] = '\0';
+	return buf;
+}
+
+int xargs_main(int argc, char *argv[])
+{
+	char **paramters;
+	char *token;
+	int i;
+	int status;
+
+	if (argc < 2)
+		++argc;
+	paramters = alloc_or_die(NULL, sizeof(char *) * (argc + 1));
+
+	for (i = 1; i < argc; ++i)
+		paramters[i - 1] = argv[i];
+	if (paramters[0] == NULL) {
+		paramters[0] = "echo";
+		paramters[1] = NULL;
+	}
+
+	while ((token = xargs_read_token(" \t\n")) != NULL) {
+		int pid;
+
+		paramters[argc - 1] = token;
+		paramters[argc] = NULL;
+
+		pid = fork();
+		if (pid == -1) {
+			free(token);
+			perror("xargs");
+			continue;
+		} else if (pid == 0) {
+			execvp(paramters[0], paramters);
+			printf("%s not found\n", paramters[0]);
+		} else {
+			waitpid(pid, &status, 0);
+		}
+
+		free(token);
+	}
+
+	free(paramters);
+
+	return 0;
+}
+
+int touch_main(int argc, char *argv[])
+{
+	struct timespec times[2];
+	struct stat statbuf;
+	if (argv[1] == NULL) {
+		puts("Too few arguments");
+		return 1;
+	}
+
+	errno = 0;
+	stat(argv[1], &statbuf);
+	times[0].tv_sec = statbuf.st_atime;
+	times[1].tv_sec = statbuf.st_mtime;
+	times[0].tv_nsec = statbuf.st_atim.tv_nsec;
+	times[1].tv_nsec = statbuf.st_mtim.tv_nsec;
+	utimensat(AT_FDCWD, argv[1], times, 0);
+	if (errno) {
+		if (errno == ENOENT) {
+			int fd;
+
+			errno = 0;
+			fd = creat(argv[1], S_IRUSR | S_IWUSR |
+					S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+
+			if (fd == -1) {
+				perror("touch");
+				return 1;
+			}
+
+			if (futimens(fd, times) == -1) {
+				perror("touch");
+				return 1;
+			}
+
+		} else {
+			perror("touch");
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
+int mkdir_main(int argc, char *argv[])
+{
+	if (argv[1] == NULL) {
+		puts("Too few arguments");
+		return 1;
+	}
+	errno = 0;
+	mkdir(argv[1], 0755);
+	if (errno) {
+		perror("mkdir");
+		return 1;
+	}
+	return 0;
+}
+
+int cp_main(int argc, char *argv[])
+{
+	int ch;
+	FILE *in, *out;
+	if (argc < 3) {
+		puts("Too few arguments");
+		return 1;
+	}
+
+	if (argv[2][strlen(argv[2]) - 1] == '/')
+		argv[2][strlen(argv[2]) - 1] = '\0';
+
+	in = fopen(argv[1], "rb");
+	if (in == NULL) {
+		perror("cp");
+		return 1;
+	}
+
+	out = fopen(argv[2], "wb");
+	if (out == NULL  && errno == EISDIR) {
+		char *buf = alloc_or_die(NULL, strlen(argv[1]) + strlen(argv[2]) + 2);
+		char *infile;
+		for (infile = argv[1]; *infile != '\0'; ++infile)
+			;
+		while (*infile != '/' && infile != argv[1])
+			--infile;
+		if (*infile == '/')
+			++infile;
+
+		strcpy(buf, argv[2]);
+		strcat(buf, "/");
+		strcat(buf, infile);
+
+		out = fopen(buf, "wb");
+		free(buf);
+	}
+
+	if (out == NULL) {
+		perror("cp");
+		fclose(in);
+		return 1;
+	}
+
+	while ((ch = fgetc(in)) != EOF)
+		fputc(ch, out);
+
+	fclose(in);
+	fclose(out);
+	return 0;
+}
+
+int mv_main(int argc, char *argv[])
+{
+	if (argc < 3) {
+		puts("Too few arguments");
+		return 1;
+	}
+	if (argv[2][strlen(argv[2]) - 1] == '/')
+		argv[2][strlen(argv[2]) - 1] = '\0';
+	errno = 0;
+	rename(argv[1], argv[2]);
+
+	if (errno == EISDIR) {
+		char *buf = alloc_or_die(NULL, strlen(argv[1]) + strlen(argv[2]) + 2);
+		char *infile;
+		errno = 0;
+
+		for (infile = argv[1]; *infile != '\0'; ++infile)
+			;
+		while (*infile != '/' && infile != argv[1])
+			--infile;
+		if (*infile == '/')
+			++infile;
+
+		strcpy(buf, argv[2]);
+		strcat(buf, "/");
+		strcat(buf, infile);
+
+		rename(argv[1], buf);
+		free(buf);
+	}
+
+	if (errno) {
+		perror("mv");
+		return 1;
+	}
+	return 0;
+}
+
+int rm_main(int argc, char *argv[])
+{
+	/* TODO */
+	if (argv[1] == NULL) {
+		puts("Too few arguments");
+		return 1;
+	}
+	errno = 0;
+	unlink(argv[1]);
+	if (errno) {
+		perror("rm");
+		return 1;
+	}
+	return 0;
+}
+
+int ln_main(int argc, char *argv[])
+{
+	if (argc < 3) {
+		puts("Too few arguments");
+		return 1;
+	}
+	if (argv[2][strlen(argv[2]) - 1] == '/')
+		argv[2][strlen(argv[2]) - 1] = '\0';
+	errno = 0;
+	link(argv[1], argv[2]);
+
+	if (errno == EISDIR) {
+		char *buf = alloc_or_die(NULL, strlen(argv[1]) + strlen(argv[2]) + 2);
+		char *infile;
+		errno = 0;
+
+		for (infile = argv[1]; *infile != '\0'; ++infile)
+			;
+		while (*infile != '/' && infile != argv[1])
+			--infile;
+		if (*infile == '/')
+			++infile;
+
+		strcpy(buf, argv[2]);
+		strcat(buf, "/");
+		strcat(buf, infile);
+
+		link(argv[1], buf);
+		free(buf);
+	}
+
+	if (errno) {
+		perror("ln");
+		return 1;
+	}
+	return 0;
+	return 0;
+}
+
 int cd_main(int argc, char *argv[])
 {
 	if (argv[1] == NULL) {
@@ -684,6 +1145,25 @@ int kill_main(int argc, char *argv[])
 	}
 
 	return status;
+}
+
+int pwd_main(int argc, char *argv[])
+{
+	int max = pathconf(".", _PC_PATH_MAX);
+	char *p;
+	char *buf;
+	if (max == -1)
+		max = 4096;
+	buf = alloc_or_die(NULL, max);
+	p = getcwd(buf, max);
+	if (p == NULL) {
+		perror("pwd");
+		return 1;
+	} else {
+		printf("%s\n", buf);
+	}
+	free(buf);
+	return 0;
 }
 
 int command_main(int argc, char *argv[])
