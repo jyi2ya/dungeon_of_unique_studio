@@ -67,12 +67,6 @@ int find_command_and_call(int argc, char *argv[])
 	return 1;
 }
 
-int main(int argc, char *argv[])
-{
-	is_independent_shell = 1;
-	return find_command_and_call(argc, argv) >> 8;
-}
-
 int scan_token(char *line, char ***res)
 {
 	char *token_start = line;
@@ -530,7 +524,7 @@ void signal_handler(int sig)
 	signal_received = 1;
 }
 
-int sh_main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
 	int line_cnt = 0;
 	int return_value = 0;
