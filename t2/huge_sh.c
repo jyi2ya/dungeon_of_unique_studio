@@ -488,7 +488,7 @@ int execute_single_command(char *cmd, char **paramters)
 int execute_commands(struct cmd_line *cmds)
 {
 	struct cmd_line *cur, *last;
-	int status;
+	int status = 0;
 
 	for (cur = cmds, last = cmds; cur != NULL; cur = cur->next) {
 		if (!cur->is_pipe) {
@@ -567,13 +567,19 @@ int execute_commands(struct cmd_line *cmds)
 			}
 
 			while (pid_to_wait != NULL) {
-				struct pid_list *next = pid_to_wait->next;
+				int pid;
 
-				while (waitpid(pid_to_wait->pid, &status, 0) == -1)
+				while ((pid = wait(&status)) == -1)
 					if (errno != EINTR)
 						break;
-				free(pid_to_wait);
-				pid_to_wait = next;
+
+				for (p = &pid_to_wait; *p != NULL; p = &((*p)->next))
+					if ((*p)->pid == pid) {
+						struct pid_list *d = *p;
+						*p = d->next;
+						free(d);
+						break;
+					}
 			}
 		}
 	}
@@ -715,10 +721,11 @@ int ls_main(int argc, char *argv[])
 		for (i = 0; i < n; i += rows) {
 			int maxlen = 0;
 			for (j = i; j < n && j < i + rows; ++j) {
-				int len = strlen(sorted[j]->d_name) + 1;
+				int len = strlen(sorted[j]->d_name);
 				if (len > maxlen)
 					maxlen = len;
 			}
+			maxlen += 2;
 			total += maxlen;
 			column_width[i / rows] = maxlen;
 		}
@@ -733,7 +740,10 @@ int ls_main(int argc, char *argv[])
 	} else {
 		for (i = 0; i < rows; ++i) {
 			for (j = i; j < n; j += rows)
-				printf("%-*s", column_width[j / rows], sorted[j]->d_name);
+				if (j + rows >= n)
+					printf("%s", sorted[j]->d_name);
+				else
+					printf("%-*s", column_width[j / rows], sorted[j]->d_name);
 			putchar('\n');
 		}
 	}
@@ -1002,7 +1012,7 @@ int mv_main(int argc, char *argv[])
 	errno = 0;
 	rename(argv[1], argv[2]);
 
-	if (errno == EISDIR) {
+	if (errno == EISDIR || errno == EEXIST || errno == ENOTEMPTY) {
 		char *buf = alloc_or_die(NULL, strlen(argv[1]) + strlen(argv[2]) + 2);
 		char *infile;
 		errno = 0;
@@ -1056,7 +1066,7 @@ int ln_main(int argc, char *argv[])
 	errno = 0;
 	link(argv[1], argv[2]);
 
-	if (errno == EISDIR) {
+	if (errno == EEXIST) {
 		char *buf = alloc_or_die(NULL, strlen(argv[1]) + strlen(argv[2]) + 2);
 		char *infile;
 		errno = 0;
@@ -1076,11 +1086,11 @@ int ln_main(int argc, char *argv[])
 		free(buf);
 	}
 
-	if (errno) {
+	if (errno == ENOENT) {
 		perror("ln");
 		return 1;
 	}
-	return 0;
+
 	return 0;
 }
 
